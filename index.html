@@ -122,6 +122,28 @@
     const REMEMBER_EXP_KEY = "terroirs_climats_exp";
     const REMEMBER_DAYS = 30;
 
+    // Le rendu doit attendre la fin du parsing : document.open() est ignoré tant
+    // que l'analyseur est actif, et document.write() injecte alors le dashboard
+    // À CÔTÉ du formulaire de login au lieu de le remplacer. Le chemin "remember me"
+    // déclenchait le bug car il saute la dérivation PBKDF2 (100 000 itérations) et
+    // termine avant la fin du parsing.
+    function domReady() {
+        return new Promise(resolve => {
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", resolve, { once: true });
+            } else {
+                resolve();
+            }
+        });
+    }
+
+    async function renderDashboard(plainHTML) {
+        await domReady();
+        document.open();
+        document.write(plainHTML);
+        document.close();
+    }
+
     async function deriveKey(password, salt) {
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
@@ -187,9 +209,7 @@
                 const exp = Date.now() + REMEMBER_DAYS * 86400000;
                 localStorage.setItem(REMEMBER_EXP_KEY, exp.toString());
             }
-            document.open();
-            document.write(plainHTML);
-            document.close();
+            await renderDashboard(plainHTML);
         } else {
             btn.disabled = false;
             spinner.style.display = "none";
@@ -218,9 +238,7 @@
             const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
             const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, dataWithTag);
             const plainHTML = new TextDecoder().decode(decrypted);
-            document.open();
-            document.write(plainHTML);
-            document.close();
+            await renderDashboard(plainHTML);
             return true;
         } catch (e) {
             localStorage.removeItem(REMEMBER_KEY);
